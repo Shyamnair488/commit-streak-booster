@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,23 @@ const RepositoryConfig = ({ onSave, isConfigured, loading }: RepositoryConfigPro
   const [username, setUsername] = useState("");
   const [token, setToken] = useState("");
   const [email, setEmail] = useState("");
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  // Load existing config when component mounts
+  useEffect(() => {
+    const savedConfig = localStorage.getItem('repoConfig');
+    if (savedConfig) {
+      try {
+        const config = JSON.parse(savedConfig);
+        setRepoUrl(config.repoUrl || "");
+        setUsername(config.username || "");
+        setToken(config.token || "");
+        setEmail(config.email || "");
+      } catch (e) {
+        console.error("Failed to parse saved config:", e);
+      }
+    }
+  }, []);
 
   const handleSave = () => {
     if (!repoUrl || !username || !token || !email) {
@@ -60,6 +77,11 @@ const RepositoryConfig = ({ onSave, isConfigured, loading }: RepositoryConfigPro
     }
 
     onSave({ repoUrl, username, token, email });
+    setIsEditMode(false);
+  };
+
+  const handleEdit = () => {
+    setIsEditMode(true);
   };
 
   return (
@@ -81,7 +103,7 @@ const RepositoryConfig = ({ onSave, isConfigured, loading }: RepositoryConfigPro
             placeholder="https://github.com/username/repository"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
-            disabled={isConfigured || loading}
+            disabled={isConfigured && !isEditMode || loading}
           />
         </div>
         <div className="space-y-2">
@@ -91,7 +113,7 @@ const RepositoryConfig = ({ onSave, isConfigured, loading }: RepositoryConfigPro
             placeholder="Your GitHub username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            disabled={isConfigured || loading}
+            disabled={isConfigured && !isEditMode || loading}
           />
         </div>
         <div className="space-y-2">
@@ -102,7 +124,7 @@ const RepositoryConfig = ({ onSave, isConfigured, loading }: RepositoryConfigPro
             placeholder="github_pat_..."
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            disabled={isConfigured || loading}
+            disabled={isConfigured && !isEditMode || loading}
           />
           <p className="text-xs text-muted-foreground mt-1">
             Create a token with repo scope at{" "}
@@ -124,29 +146,46 @@ const RepositoryConfig = ({ onSave, isConfigured, loading }: RepositoryConfigPro
             placeholder="your-email@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            disabled={isConfigured || loading}
+            disabled={isConfigured && !isEditMode || loading}
           />
         </div>
       </CardContent>
       <CardFooter className="flex justify-between">
-        {isConfigured ? (
-          <div className="flex items-center text-sm text-green-600 gap-1">
-            <CheckCircle2 className="h-4 w-4" />
-            <span>Repository configured</span>
-          </div>
+        {isConfigured && !isEditMode ? (
+          <>
+            <div className="flex items-center text-sm text-green-600 gap-1">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>Repository configured</span>
+            </div>
+            <Button 
+              onClick={handleEdit} 
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Edit Configuration
+            </Button>
+          </>
         ) : (
-          <div className="flex items-center text-sm text-amber-600 gap-1">
-            <AlertCircle className="h-4 w-4" />
-            <span>Not configured</span>
-          </div>
+          <>
+            {!isEditMode ? (
+              <div className="flex items-center text-sm text-amber-600 gap-1">
+                <AlertCircle className="h-4 w-4" />
+                <span>Not configured</span>
+              </div>
+            ) : (
+              <div className="flex items-center text-sm text-blue-600 gap-1">
+                <AlertCircle className="h-4 w-4" />
+                <span>Updating configuration</span>
+              </div>
+            )}
+            <Button 
+              onClick={handleSave} 
+              className="bg-github-green hover:bg-github-darkgreen"
+              disabled={loading}
+            >
+              {loading ? "Saving..." : "Save Configuration"}
+            </Button>
+          </>
         )}
-        <Button 
-          onClick={handleSave} 
-          className="bg-github-green hover:bg-github-darkgreen"
-          disabled={isConfigured || loading}
-        >
-          {loading ? "Saving..." : isConfigured ? "Configured" : "Save Configuration"}
-        </Button>
       </CardFooter>
     </Card>
   );

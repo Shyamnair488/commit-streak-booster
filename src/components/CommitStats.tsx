@@ -80,7 +80,7 @@ const CommitStats = ({ isActive, stats }: CommitStatsProps) => {
                   isActive && index === commitData.length - 1 
                     ? "animate-pulse-green" 
                     : ""
-                }`}
+                } rounded-t-sm`}
                 style={{ 
                   height: `${(day.count / maxCount) * 100}%`,
                   minHeight: day.count > 0 ? "15%" : "5%" 

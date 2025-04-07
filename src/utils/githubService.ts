@@ -22,6 +22,8 @@ class GitHubService {
   constructor() {
     // Load stats from localStorage
     this.loadStats();
+    // Load config from localStorage
+    this.getConfig();
   }
 
   loadStats() {
@@ -45,18 +47,40 @@ class GitHubService {
 
   async setConfig(config: RepositoryConfigData): Promise<boolean> {
     try {
+      console.log("Testing repository access with config:", {
+        repoUrl: config.repoUrl,
+        username: config.username,
+        email: config.email,
+        token: "********" // Hiding token for security
+      });
+      
       // Validate repository access by making a test API call
       const repoInfo = await this.fetchRepoInfo(config);
       
       if (repoInfo) {
-        console.log("Repository configured:", config);
+        console.log("Repository configured successfully:", repoInfo.name);
         this.config = config;
         localStorage.setItem('repoConfig', JSON.stringify(config));
+        
+        toast.success("Repository configured successfully", {
+          description: `Connected to ${repoInfo.name}`
+        });
+        
         return true;
       }
+      
+      toast.error("Failed to access repository", {
+        description: "Check your repository URL and token permissions"
+      });
+      
       return false;
     } catch (error) {
       console.error("Error validating repository:", error);
+      
+      toast.error("Error connecting to GitHub", {
+        description: "Please check your credentials and try again"
+      });
+      
       return false;
     }
   }
@@ -66,7 +90,10 @@ class GitHubService {
     const { repoUrl, token } = config;
     const repoPath = this.extractRepoPath(repoUrl);
     
-    if (!repoPath) return null;
+    if (!repoPath) {
+      console.error("Invalid repository URL format");
+      return null;
+    }
     
     try {
       const response = await fetch(`https://api.github.com/repos/${repoPath}`, {
@@ -79,17 +106,34 @@ class GitHubService {
       if (response.ok) {
         return await response.json();
       }
+      
+      console.error("Failed to fetch repo info:", response.status, await response.text());
       return null;
     } catch (error) {
-      console.error("Error fetching repo info:", error);
+      console.error("Network error fetching repo info:", error);
       return null;
     }
   }
 
   // Extract username/repo from GitHub URL
   private extractRepoPath(repoUrl: string): string | null {
-    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
-    return match ? `${match[1]}/${match[2]}` : null;
+    try {
+      // Handle URLs with or without .git extension
+      const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)(\.git)?$/);
+      if (match) {
+        const username = match[1];
+        let repo = match[2];
+        // Remove .git extension if present
+        if (repo.endsWith('.git')) {
+          repo = repo.substring(0, repo.length - 4);
+        }
+        return `${username}/${repo}`;
+      }
+      return null;
+    } catch (e) {
+      console.error("Error parsing repo URL:", e);
+      return null;
+    }
   }
 
   getConfig(): RepositoryConfigData | null {
@@ -110,10 +154,15 @@ class GitHubService {
   async makeCommit(message: string): Promise<boolean> {
     if (!this.config) {
       console.error("Repository not configured");
+      toast.error("Repository not configured", {
+        description: "Please configure your repository before making commits"
+      });
       return false;
     }
 
     try {
+      console.log("Attempting to create commit with message:", message);
+      
       // Make an actual commit to GitHub
       const success = await this.createGitHubCommit(message);
       
@@ -164,6 +213,9 @@ class GitHubService {
       return false;
     } catch (error) {
       console.error("Error making commit:", error);
+      toast.error("Error making commit", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      });
       return false;
     }
   }
@@ -175,42 +227,70 @@ class GitHubService {
     const { repoUrl, token, username, email } = this.config;
     const repoPath = this.extractRepoPath(repoUrl);
     
-    if (!repoPath) return false;
+    if (!repoPath) {
+      console.error("Invalid repository URL format");
+      return false;
+    }
     
     try {
-      // 1. Get the reference to the master/main branch
-      const branchResponse = await fetch(`https://api.github.com/repos/${repoPath}/git/refs/heads/main`, {
+      console.log("Getting default branch...");
+      
+      // First try to get branches to determine the default branch
+      const branchesResponse = await fetch(`https://api.github.com/repos/${repoPath}/branches`, {
         headers: {
           'Authorization': `token ${token}`,
           'Accept': 'application/vnd.github.v3+json'
         }
       });
-
-      // If main branch doesn't exist, try master
-      let branchData;
-      if (!branchResponse.ok) {
-        const masterResponse = await fetch(`https://api.github.com/repos/${repoPath}/git/refs/heads/master`, {
-          headers: {
-            'Authorization': `token ${token}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        });
-        if (!masterResponse.ok) {
-          console.error("Could not find main or master branch");
-          return false;
-        }
-        branchData = await masterResponse.json();
-      } else {
-        branchData = await branchResponse.json();
-      }
-
-      // Extract branch name from ref
-      const branchName = branchData.ref.split('/').pop();
       
-      // 2. Get the latest commit SHA
-      const latestCommitSha = branchData.object.sha;
-
-      // 3. Get the commit data
+      if (!branchesResponse.ok) {
+        console.error("Failed to fetch branches:", branchesResponse.status);
+        toast.error("Failed to access repository branches", {
+          description: "Please check your token has correct permissions"
+        });
+        return false;
+      }
+      
+      const branches = await branchesResponse.json();
+      
+      // First try main, then master, then use the first branch in the list
+      let defaultBranch = branches.find((b: any) => b.name === 'main');
+      if (!defaultBranch) {
+        defaultBranch = branches.find((b: any) => b.name === 'master');
+      }
+      
+      if (!defaultBranch && branches.length > 0) {
+        defaultBranch = branches[0];
+      }
+      
+      if (!defaultBranch) {
+        console.error("No branches found in repository");
+        toast.error("Repository has no branches", {
+          description: "Please initialize your repository with at least one commit"
+        });
+        return false;
+      }
+      
+      const branchName = defaultBranch.name;
+      console.log("Using branch:", branchName);
+      
+      // Get the reference to the branch
+      const refResponse = await fetch(`https://api.github.com/repos/${repoPath}/git/refs/heads/${branchName}`, {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+      
+      if (!refResponse.ok) {
+        console.error("Failed to get reference:", refResponse.status);
+        return false;
+      }
+      
+      const refData = await refResponse.json();
+      const latestCommitSha = refData.object.sha;
+      
+      // Get the commit data
       const commitResponse = await fetch(`https://api.github.com/repos/${repoPath}/git/commits/${latestCommitSha}`, {
         headers: {
           'Authorization': `token ${token}`,
@@ -219,13 +299,13 @@ class GitHubService {
       });
       
       if (!commitResponse.ok) {
-        console.error("Error fetching commit data");
+        console.error("Error fetching commit data:", commitResponse.status);
         return false;
       }
       
       const commitData = await commitResponse.json();
       
-      // 4. Create a new tree with a small change
+      // Create a new tree with a small change
       const timestamp = new Date().toISOString();
       const newFileContent = `# CommitBoost Auto-Commit\n\nThis commit was automatically generated by CommitBoost.\nTimestamp: ${timestamp}\n\n${message}\n`;
       
@@ -248,13 +328,13 @@ class GitHubService {
       });
       
       if (!treeResponse.ok) {
-        console.error("Error creating tree");
+        console.error("Error creating tree:", treeResponse.status);
         return false;
       }
       
       const treeData = await treeResponse.json();
       
-      // 5. Create a new commit
+      // Create a new commit
       const newCommitResponse = await fetch(`https://api.github.com/repos/${repoPath}/git/commits`, {
         method: 'POST',
         headers: {
@@ -275,13 +355,15 @@ class GitHubService {
       });
       
       if (!newCommitResponse.ok) {
-        console.error("Error creating commit");
+        console.error("Error creating commit:", newCommitResponse.status);
+        const errorText = await newCommitResponse.text();
+        console.error("Response:", errorText);
         return false;
       }
       
       const newCommitData = await newCommitResponse.json();
       
-      // 6. Update the reference to point to the new commit
+      // Update the reference to point to the new commit
       const updateRefResponse = await fetch(`https://api.github.com/repos/${repoPath}/git/refs/heads/${branchName}`, {
         method: 'PATCH',
         headers: {
@@ -296,7 +378,7 @@ class GitHubService {
       });
       
       if (!updateRefResponse.ok) {
-        console.error("Error updating reference");
+        console.error("Error updating reference:", updateRefResponse.status);
         return false;
       }
       

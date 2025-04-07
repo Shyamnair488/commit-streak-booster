@@ -1,6 +1,6 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart } from "lucide-react";
+import { BarChart, GitCommit } from "lucide-react";
 
 interface CommitStatsProps {
   isActive: boolean;
@@ -37,6 +37,11 @@ const CommitStats = ({ isActive, stats }: CommitStatsProps) => {
   // Calculate the maximum count to scale the graph
   const maxCount = Math.max(...commitData.map(d => d.count), 5); // Minimum of 5 for visual purposes
 
+  // Format last commit time
+  const lastCommitTime = stats.lastCommitDate 
+    ? new Date(stats.lastCommitDate).toLocaleString() 
+    : 'No commits yet';
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -49,6 +54,20 @@ const CommitStats = ({ isActive, stats }: CommitStatsProps) => {
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-2">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <GitCommit className="h-4 w-4 text-github-green" />
+            <span className="text-sm font-medium">Total: {stats.totalCommits} commits</span>
+          </div>
+          <div className="text-sm">
+            {stats.streakDays > 0 && (
+              <span className="font-medium text-amber-600">
+                {stats.streakDays} day streak
+              </span>
+            )}
+          </div>
+        </div>
+
         <div className="h-48 flex items-end justify-between gap-1">
           {commitData.map((day, index) => (
             <div key={index} className="flex flex-col items-center flex-1">
@@ -76,6 +95,12 @@ const CommitStats = ({ isActive, stats }: CommitStatsProps) => {
             </div>
           ))}
         </div>
+
+        {stats.lastCommitDate && (
+          <div className="mt-4 text-xs text-gray-500">
+            Last commit: {lastCommitTime}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

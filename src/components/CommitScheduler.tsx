@@ -81,7 +81,7 @@ const CommitScheduler = ({ onStart, onStop, isActive, isConfigured, stats }: Com
             <Slider
               value={[commitsPerDay]}
               min={1}
-              max={50}
+              max={100}
               step={1}
               onValueChange={(values) => setCommitsPerDay(values[0])}
               disabled={isActive || !isConfigured}
